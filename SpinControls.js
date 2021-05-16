@@ -26,6 +26,7 @@ const ACTION = {
 	NONE: "NONE",
 	ROTATE: "ROTATE",
 	TRANSLATE: "TRANSLATE",
+	SCALE: "SCALE",
 	SCALE_ROTATE: "SCALE_ROTATE",
 };
 Object.freeze(ACTION);
@@ -74,7 +75,7 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 	// Mouse buttons
 	this.mouseButtons = { LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.SCALE, RIGHT: MOUSE.TRANSLATE };
 	// Touch fingers
-	this.touches = { ONE: ACTION.NONE, TWO: ACTION.SCALE_ROTATE, THREE: ACTION.TRANSLATE };
+	this.touches = { ONE: ACTION.NONW, TWO: ACTION.SCALE_ROTATE, THREE: ACTION.TRANSLATE };
 
 	// Base this on angle change around sphere edge?
 	this.offTrackBallVelocityGainMap = {
@@ -116,7 +117,7 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 	const translateDelta = new THREE.Vector2();
 	const position = new THREE.Vector3();
 	position.copy(object.position);
-	let positionChanged = false;
+	let _positionChanged = false;
 
 	var changeEvent = { type: 'change' };
 	var startEvent = { type: 'start' };
@@ -148,9 +149,9 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 
 			}
 
-			if (positionChanged) {
+			if (_positionChanged) {
 				_this.object.position.set(position.x, position.y, position.z)
-				positionChanged = false;
+				_positionChanged = false;
 				_this.dispatchEvent(changeEvent);
 			}
 
@@ -287,7 +288,7 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 			position.add(
 				right.multiplyScalar(d / 50)
 			)
-			positionChanged = true;
+			_positionChanged = true;
 		}
 
 	}();
@@ -300,7 +301,7 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 			position.add(
 				right.multiplyScalar(d / 50)
 			)
-			positionChanged = true;
+			_positionChanged = true;
 		}
 	}();
 
@@ -312,7 +313,7 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 			position.add(
 				cameraDirection.multiplyScalar(-d / 10)
 			)
-			positionChanged = true;
+			_positionChanged = true;
 		}
 
 	}();
@@ -775,10 +776,51 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 	function onTouchStart(event) {
 
 		if (_this.enabled === false) return;
+		event.preventDefault(); // prevent scrolling
 
-		_this.handleTouchStart(event);
+		switch (event.touches.length) {
+			case 1:
+				switch (_this.touches.ONE) {
+					case ACTION.TRANSLATE:
+						console.log("length: " + event.touches.length, "translate")
+						state = STATE.TOUCH_TRANSLATE;
+						break;
+					case ACTION.ROTATE:
+						_this.handleTouchStart(event);
+						_this.handlePointerDown(event);
+						console.log("length: " + event.touches.length, "rotate")
+						state = STATE.TOUCH_ROTATE;
+						break;
+					case ACTION.SCALE:
+						console.log("length: " + event.touches.length, "scale")
+						state = STATE.TOUCH_SCALE;
+					default:
+						state = STATE.NONE;
+				}
+				break;
+			case 2:
+				switch (_this.touches.TWO) {
+					case ACTION.SCALE_ROTATE:
+						_this.handleTouchStart(event);
+						_this.handlePointerDown(event);
+						console.log("length: " + event.touches.length, "scale_rotate")
+						state = STATE.TOUCH_SCALE_ROTATE;
+						break;
+					default:
+						state = STATE.NONE;
+				}
+				break;
+			case 3:
+				switch (_this.touches.THREE) {
+					case ACTION.TRANSLATE:
+						console.log("length: " + event.touches.length, "translate")
+						state = STATE.TRANSLATE;
+						break;
+					default:
+						state = STATE.NONE;
+				}
 
-		_this.handlePointerDown(event);
+		}
 
 	}
 
@@ -789,7 +831,24 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 		event.preventDefault();
 		event.stopImmediatePropagation(); // Prevent other controls from working.
 
-		_this.onPointerMove(event.touches[0].pageX, event.touches[0].pageY, event.timeStamp);
+		switch (state) {
+			case STATE.TOUCH_ROTATE:
+				console.log("rotate", state)
+				_this.onPointerMoveRotate(event.touches[0].pageX, event.touches[0].pageY, event.timeStamp);
+				break;
+			case STATE.TOUCH_TRANSLATE:
+				console.log("translate", state)
+				break;
+			case STATE.TOUCH_SCALE:
+				console.log("scale", state)
+				break;
+			case STATE.TOUCH_SCALE_ROTATE:
+				_this.onPointerMoveRotate(event.touches[0].pageX, event.touches[0].pageY, event.timeStamp);
+				console.log("scale_rotate", state)
+				break;
+			default:
+				state = STATE.NONE;
+		}
 
 	}
 
