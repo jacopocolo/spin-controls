@@ -1,590 +1,167 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<title>SpinControls Demo</title>
-		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<style>
-			body {
-				margin: 0px;
-				background-color: #000000;
-				color: #fff;
-				font-family: Monospace;
-				font-size: large;
-				overflow: hidden;
-			}
-			
-			#info {
-				position: absolute;
-				top: 0px;
-				left: 10px;
-				z-index: 1;
-				box-sizing: border-box;
-				pointer-events: none;
-			}
-
-			.clickable {
-				pointer-events: auto;
-			}
-
-			.menuTitle {
-				margin: 1px 40px;
-			}
-
-			#settings {
-				transition: opacity 0.40s ease;
-			}
-
-			/*
-			* Just a quick hamburger from https://codepen.io/erikterwan/pen/EVzeRP
-			*/
-			#menuToggle
-			{
-				position: absolute;
-				top: 10px;
-				
-				z-index: 1;
-				
-				-webkit-user-select: none;
-				user-select: none;
-			}
-			#menuToggle input
-			{
-				display: block;
-				width: 40px;
-				height: 32px;
-				position: absolute;
-				top: -7px;
-				left: -5px;
-				
-				cursor: pointer;
-				pointer-events: auto;
-				
-				opacity: 0; /* hide this */
-				z-index: 2; /* and place it over the hamburger */
-				
-				-webkit-touch-callout: none;
-			}
-
-			#menuToggle span
-			{
-				display: block;
-				width: 33px;
-				height: 4px;
-				margin-bottom: 5px;
-				position: relative;
-				
-				background: #ffffff;
-				border-radius: 3px;
-				
-				z-index: 1;
-				
-				transform-origin: 4px 0px;
-				
-				transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0),
-							opacity 0.55s ease;
-			}
-
-			#menuToggle span:first-child
-			{
-				transform-origin: 0% 0%;
-			}
-			#menuToggle span:nth-child(4)
-			{
-				transform-origin: 0% 100%;
-			}
-			#menuToggle input:checked ~ span:nth-child(2)
-			{
-				opacity: 1;
-				transform: rotate(45deg) translate(-2px, -1px);
-			}
-			#menuToggle input:checked ~ span:nth-child(3)
-			{
-				opacity: 0;
-				transform: rotate(0deg) scale(0.2, 0.2);
-			}
-			#menuToggle input:checked ~ span:nth-child(4)
-			{
-				transform: rotate(-45deg) translate(0, -1px);
-			}
-
-			#menuToggle input:checked ~ #settings
-			{
-				display: none;
-			}
-			
-		</style>
-	</head>
-	<body>
-		<div id="info">
-			<div id="menuToggle">
-				<input id="menuCheckbox" type="checkbox" checked onclick="toggleSettings()"/>
-				<span></span>
-				<span></span>
-				<span></span>
-			</div>
-			<h1 class="menuTitle">SpinControls</h1>
-			<div id="settings">
-				<p>
-					Click spheres to rotate.  Click box to rotate about intersection point.
-				</p>
-				<p><strong>Camera</strong> | Orbit: Left click / 1 finger | Pan: Right click / 2 fingers | Zoom: Mouse wheel / pinch</p>
-				<p>
-					<label for="mapping">Pointer to trackball mapping method: 
-						<select id="spin-mapping" class="clickable">
-							<option value="raycast">Raycast</option>
-							<option value="holroyd">Holroyd</option>
-							<option value="shoemake">Shoemake</option>
-							<option value="azimuthal">Azimuthal</option>
-						</select>
-					</label>
-				</p>
-				<p>
-					<label for="relatively-spin-off-trackball">Relatively spin when pointer off trackball:
-						<input type="checkbox" id="relatively-spin-off-trackball" class="clickable" checked/>
-					</label>
-				</p>
-			</div>
-		</div>
-
-		<!-- <script src="three.min.js"></script> -->
-		<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r124/three.min.js"></script>
-		<script src="SpinControls.js"></script>
-		<script src="CameraSpinControls.js"></script> <!-- CameraSpinControls after SpinControls please -->
-
-		<script>
-			var camera, scene, renderer, 
-				smallSpinner, bigSpinner, spinControlBig, spinControlSmall, interactives,
-				controls, isTouched, spinners, mapperSelector, relativelySpinCheckbox;
-			init();
-      		animate( 0 );
-      
-			function init() {
-
-				renderer = new THREE.WebGLRenderer();
-				renderer.setPixelRatio( window.devicePixelRatio );
-				renderer.setSize( window.innerWidth, window.innerHeight );
-				document.body.appendChild( renderer.domElement );
-        
-				camera = new THREE.PerspectiveCamera( 40, window.innerWidth / window.innerHeight, 1, 10000 );
-        		camera.position.set( 600, 300, 600 );
-				camera.lookAt( 0, 0, 0 );
-
-				scene = new THREE.Scene();
-
-				scene.add( new THREE.GridHelper( 1000, 5 ) );
-
-				var light = new THREE.DirectionalLight( 0xffffff, 2 );
-				light.position.set( 1, 1, -1 );
-				scene.add( light );
-				
-				window.addEventListener( 'mousedown', onMouseDown, true ); // get event first to enable the correct control
-				window.addEventListener( 'mouseup', onMouseUp, false ); // get event last, so false on capture
-				window.addEventListener( 'wheel', onMouseWheel, true );
-				window.addEventListener( 'wheel', onMouseWheelOff, false );
-				
-				renderer.domElement.addEventListener( 'touchstart', onTouchStart, true ); // catch down to enable camera control
-				window.addEventListener( 'touchend', onTouchEnd, false ); // get event last, so false on capture
-
-				// Spheres to spin
-				var radius = 50;
-				smallSpinner = new THREE.Group();
-				smallSpinner.position.set(200, 0, 200);
-				var spinAxis = new THREE.Vector3( 0, 1, 0 );
-				var material = new THREE.LineBasicMaterial({
-					color: 0xff0000
-				});
-				var geometry = new THREE.Geometry();
-				geometry.vertices.push(
-					new THREE.Vector3().copy( spinAxis ).multiplyScalar( radius * 1.2 ),
-					new THREE.Vector3().copy( spinAxis ).multiplyScalar( radius * -1.2 )
-				);
-				var line = new THREE.Line( geometry, material );
-				smallSpinner.add( line );
-				var geometry = new THREE.SphereBufferGeometry( radius, 16, 16 );
-				var lineMaterial = new THREE.LineBasicMaterial( { color: 0xffffff, transparent: true, opacity: 0.2 } );
-				smallSpinner.add( new THREE.LineSegments( geometry, lineMaterial ) );				
-				var meshMaterial = new THREE.MeshPhongMaterial( { color: 0x333333FF, emissive: 0x072534, side: THREE.DoubleSide, flatShading: true } );
-				smallSpinner.sphere = new THREE.Mesh( geometry, meshMaterial );
-        		smallSpinner.add( smallSpinner.sphere );
-				scene.add( smallSpinner );
-				
-				spinControlSmall = new SpinControls( smallSpinner, radius, camera, renderer.domElement );
-				spinControlSmall.spinAxisConstraint = spinAxis;
-				spinControlSmall.dampingFactor = 1.5; // Decreases to keep spinning longer after pointer release. Default is 1.0
-				spinControlSmall.rotateSensitivity = .8; // Increase for faster spin. Multiplies pointer movement to ball rotation.
-        
-				var radius = 200;
-				bigSpinner = new THREE.Group();
-				bigSpinner.position.set(-200, 0, 200);
-				var geometry = new THREE.SphereBufferGeometry( radius, 16, 16 );
-				var lineMaterial = new THREE.LineBasicMaterial( { color: 0xffffff, transparent: true, opacity: 0.2 } );
-				bigSpinner.add( new THREE.LineSegments( geometry, lineMaterial ) );
-				var meshMaterial = new THREE.MeshPhongMaterial( { color: 0x156289, emissive: 0x072534, side: THREE.DoubleSide, flatShading: true } );        
-				bigSpinner.sphere = new THREE.Mesh( geometry, meshMaterial );
-        		bigSpinner.add( bigSpinner.sphere );
-				bigSpinner.add( new THREE.Mesh( geometry, meshMaterial ) );
-        		scene.add( bigSpinner );
-        
-        		spinControlBig = new SpinControls( bigSpinner, radius, camera, renderer.domElement);
-
-				// Model to raycast the camera trackball pivot on
-				var geometry = new THREE.BoxGeometry( 600, 100, 600 );
-				var material = new THREE.MeshNormalMaterial();
-				var pivotMesh = new THREE.Mesh( geometry, material );
-				pivotMesh.position.set(0, 0, -600);
-				scene.add( pivotMesh );
-
-				var cameraPivotSurfaces = [ pivotMesh ];
-        
-				// Camera control UI
-				var trackballWidget = new THREE.Group();
-				trackballWidget.position.set(0, 0, 0);
-				var geometry = new THREE.SphereBufferGeometry( 1, 8, 8 );
-				meshMaterial = new THREE.MeshBasicMaterial( { color: 0xaaaaff, flatShading: true, transparent: true, opacity: 0.2 } );
-				lineMaterial = new THREE.LineBasicMaterial( { color: 0xffffff, transparent: true, opacity: 0.5 } );
-				trackballWidget.add( new THREE.LineSegments( geometry, lineMaterial ) );
-				trackballWidget.add( new THREE.Mesh( geometry, meshMaterial ) );
-				scene.add( trackballWidget );
-				trackballWidget.visible = false;
-				trackballWidget.renderOrder = 1; // Don't draw to early, thus obscuring other transparent objects        
-				
-				controls = new CameraSpinControls( camera, renderer.domElement );
-				// Moving trackball position to mesh intersection points
-				// so disable controls moving trackball on rotation start
-				controls.startTrackballScreenCenter = false; 
-
-				var raycaster = new THREE.Raycaster();
-				var pointerPos = new THREE.Vector2();
-				 
-				function onMouseMove( event ) {
-
-					pointerPos.x = ( event.clientX / window.innerWidth ) * 2 - 1;
-					pointerPos.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
-
-				}
-
-				window.addEventListener( 'mousemove', onMouseMove, false );
-
-				function onPointerDown() {
-
-					raycaster.setFromCamera( pointerPos, camera );
-					var intersects = raycaster.intersectObjects( cameraPivotSurfaces );
-
-					if(intersects.length) {
-
-						controls.setTargetPosition(intersects[0].point);
-
-					} else {
-
-						// Move trackball to center of screen if not clicking on anything.
-						controls.target.setFromMatrixPosition(controls.trackballToObject);
-						var startDistance = controls.target.length();
-						controls.target.set(0, 0, -startDistance);
-						controls.target.applyQuaternion(camera.quaternion);
-						controls.target.add(camera.position);
-						controls.setTargetPosition(controls.target);
-
-					}
-
-				}
-
-				window.addEventListener( 'mousedown', onPointerDown, true );
-
-				function touchStart( event ) {
-
-					pointerPos.x = ( event.touches[ 0 ].clientX / window.innerWidth ) * 2 - 1;
-					pointerPos.y = - ( event.touches[ 0 ].clientY / window.innerHeight ) * 2 + 1;
-					onPointerDown();
-
-				}
-
-				window.addEventListener( 'touchstart', touchStart, true );
-
-				function updateCameraSpinUI() {
-
-					trackballWidget.position.copy( controls.target );
-					var r = controls.spinControl.trackballRadius;
-					trackballWidget.scale.set( r, r, r );
-
-				}
-
-				controls.addEventListener( 'start', function ( event ) {
-					
-					if (event.state === controls.STATE.DOLLY) {
-
-						controls.target.setFromMatrixPosition(controls.trackballToObject);
-						var startDistance = controls.target.length();
-						raycaster.setFromCamera( pointerPos, camera );
-						controls.target.copy(raycaster.ray.direction);
-						controls.target.setLength(startDistance);
-						controls.target.add(raycaster.ray.origin);
-						controls.setTargetPosition(controls.target);
-
-					} else {
-
-						// Turn on trackball graphics for input except dolly
-						trackballWidget.visible = true;
-						updateCameraSpinUI();
-
-					}
-
-				} );
-
-				controls.addEventListener( 'change', function ( event ) {
-
-					updateCameraSpinUI();
-
-				} );
-				
-				controls.addEventListener( 'end', function ( event ) {
-
-					if (event.state !== controls.STATE.DOLLY) {
-						
-						// Don't turn off if dolly as may still be clicking with pointer
-						trackballWidget.visible = false;
-						
-					}
-
-				} );
-
-				// Pick which control gets to react to input.
-				// Raycast pointer to pick which sphere, else camera controls.
-				interactives = [ smallSpinner.sphere, bigSpinner.sphere, ...cameraPivotSurfaces ];	
-				spinControlSmall.enabled = false;
-				spinControlBig.enabled = false;
-				controls.enabled = false;
-				
-				function onMouseDown( event ) {
-
-					if ( event.button === 0 ) {
-
-						pickControlToEnable( getPointerInNdc( event.pageX, event.pageY ) );
-
-					}	else { //if not left click then move camera
-
-						controls.enabled = true;
-
-					}
-					
-				}
-
-				function onMouseUp( event ) {
-
-					spinControlSmall.enabled = false;
-					spinControlBig.enabled = false;
-					controls.enabled = false;
-
-				}
-
-				function onMouseWheel( event ) {
-
-					controls.enabled = true;
-
-				}
-				function onMouseWheelOff( event ) {
-
-					controls.enabled = false;
-
-				}
-
-				spinners = [spinControlSmall, spinControlBig, controls.spinControl];
-
-				mapperSelector = document.getElementById('spin-mapping');
-				mapperSelector.addEventListener("change", onSpinMapping);
-
-				relativelySpinCheckbox = document.getElementById('relatively-spin-off-trackball');
-				relativelySpinCheckbox.addEventListener("change", onRelativelySpinOffTrackball);
-				
-				window.addEventListener( 'resize', onWindowResize, false );
+
+<head>
+	<title>Simple example - spin controls</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<style>
+		body {
+			margin: 0px;
+			background-color: #000000;
+			color: #fff;
+			font-family: Monospace;
+			text-align: center;
+			font-size: 15px;
+			line-height: 30px;
+			overflow: hidden;
+		}
+
+		#info {
+			position: absolute;
+			top: 0px;
+			width: 100%;
+			padding: 15px;
+			z-index: 100;
+			box-sizing: border-box;
+			pointer-events: none;
+		}
+
+		.clickable {
+			pointer-events: auto;
+		}
+	</style>
+</head>
+
+<body>
+
+	<div id="info">
+		Spin Controls <br /> Left click or touch sphere to spin it as if touching a trackball.
+		<span><label for="mapping">Pointer to trackball mapping method:
+				<select id="spin-mapping" class="clickable">
+					<option value="raycast">Raycast</option>
+					<option value="holroyd">Holroyd</option>
+					<option value="shoemake">Shoemake</option>
+					<option value="azimuthal">Azimuthal</option>
+				</select>
+			</label>
+		</span>
+	</div>
+
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r124/three.min.js"></script>
+	<script src="SpinControls.js"></script>
+	<script src="CameraSpinControls.js"></script>
+
+	<script>
+		var camera, scene, renderer, spinControl, spinners;
+		init();
+		render();
+		animate(0);
+
+		function init() {
+
+			renderer = new THREE.WebGLRenderer();
+			renderer.setPixelRatio(window.devicePixelRatio);
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			document.body.appendChild(renderer.domElement);
+
+			camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 1, 3000);
+			// var width = 2;
+			// var height = 2;
+			// camera = new THREE.OrthographicCamera( width / - 2, width / 2, height / 2, height / - 2, 1, 1000 );
+
+			camera.position.set(600, 300, 500);
+			camera.lookAt(.5, .4, 0);
+
+			scene = new THREE.Scene();
+
+			scene.add(new THREE.GridHelper(1000, 10));
+
+			var light = new THREE.DirectionalLight(0xffffff, 2);
+			light.position.set(1, 1, 1);
+			scene.add(light);
+
+			var radius = 200;
+			// const geometry = new THREE.PlaneGeometry(radius, radius, radius);
+			// const material = new THREE.MeshBasicMaterial({ color: 0xffff00, side: THREE.DoubleSide });
+			// const plane = new THREE.Mesh(geometry, material);
+			// scene.add(plane);
+			const geometry = new THREE.CylinderGeometry(50, 50, 200, 32);
+			const material = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true });
+			const cylinder = new THREE.Mesh(geometry, material);
+			scene.add(cylinder);
+
+			// controls = new CameraSpinControls(camera, renderer.domElement);
+			spinControl = new SpinControls(cylinder, radius, camera, renderer.domElement);
+			spinControl.dampingFactor = 30;
+			spinControl.mouseButtons = { LEFT: "ROTATE", RIGHT: "TRANSLATE" }
+			spinners = [spinControl]
+
+			// spinner.setPointerToSphereMapping(spinControl.POINTER_SPHERE_MAPPING.HOLROYD) // options
+
+			window.addEventListener('resize', onWindowResize, false);
+
+		}
+
+		function onWindowResize() {
+
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			spinControl.onWindowResize();
+			render();
+
+		}
+
+		function animate(timeStamp) {
+
+			requestAnimationFrame(animate);
+			spinControl.update();
+			render();
+
+		}
+
+		function render() {
+
+			renderer.render(scene, camera);
+
+		}
+
+		var mapperSelector = document.getElementById('spin-mapping');
+		mapperSelector.addEventListener("change", onSpinMapping);
+
+		function onSpinMapping() {
+
+			var mappingMode = mapperSelector.options[mapperSelector.selectedIndex].value;
+			var newMode;
+			if (mappingMode === 'holroyd') {
+
+				newMode = spinControl.POINTER_SPHERE_MAPPING.HOLROYD;
+
+			} else if (mappingMode === 'shoemake') {
+
+				newMode = spinControl.POINTER_SPHERE_MAPPING.SHOEMAKE;
+
+			} else if (mappingMode === 'azimuthal') {
+
+				newMode = spinControl.POINTER_SPHERE_MAPPING.AZIMUTHAL;
+
+			} else if (mappingMode === 'raycast') {
+
+				newMode = spinControl.POINTER_SPHERE_MAPPING.RAYCAST;
 
 			}
 
-			var pickControlToEnable = ( function () {
+			spinners.forEach((spinner) => {
 
-				var raycaster = new THREE.Raycaster();
-				
-				var resultArray = [];
+				spinner.setPointerToSphereMapping(newMode);
 
-				return function pickControlToEnable( pointerNDC ) {
+			});
 
-					raycaster.setFromCamera(pointerNDC, camera);
-					resultArray.length = 0;
-					raycaster.intersectObjects(interactives, false, resultArray);
+		}
 
-					if( resultArray.length > 0 ) {
+	</script>
 
-						if( resultArray[0].object === smallSpinner.sphere ) {
+</body>
 
-							spinControlSmall.enabled = true;
-
-						} else if( resultArray[0].object === bigSpinner.sphere ) {
-
-							spinControlBig.enabled = true;
-
-						} else {
-
-							// Hit static model we want to set pivot point on
-							controls.enabled = true;
-
-						}
-
-					} else {
-
-						controls.enabled = true;
-
-					}
-
-				}
-
-			}() );
-      
-			function onWindowResize() {
-
-				camera.aspect = window.innerWidth / window.innerHeight;
-				camera.updateProjectionMatrix();        
-				renderer.setSize( window.innerWidth, window.innerHeight );				
-				updateCanvas();
-        		spinControlSmall.onWindowResize();
-				spinControlBig.onWindowResize();
-				controls.onWindowResize();
-				render();
-
-			}
-      
-      		function animate(timeStamp) {
-
-				requestAnimationFrame( animate );			
-        		spinControlSmall.update();	
-				spinControlBig.update();
-       			controls.update();
-				render();
-				
-			}
-      
-			function render() {
-
-				renderer.render( scene, camera );
-				
-			}
-
-			var canvas = {};
-			function updateCanvas() {
-
-				if ( renderer.domElement === document ) {
-
-					canvas.left = 0;
-					canvas.top = 0;
-					canvas.width = window.innerWidth;
-					canvas.height = window.innerHeight;
-
-				} else {
-
-					var box = renderer.domElement.getBoundingClientRect();
-					var d = renderer.domElement.ownerDocument.documentElement;
-					canvas.left = box.left + window.pageXOffset - d.clientLeft;
-					canvas.top = box.top + window.pageYOffset - d.clientTop;
-					canvas.width = box.width;
-					canvas.height = box.height;
-
-				}
-
-			}
-
-			updateCanvas();
-
-			var getPointerInNdc = ( function () {
-
-				var vector = new THREE.Vector2();
-
-				return function getPointerInNdc( pageX, pageY ) {
-
-					vector.set(
-						( ( pageX - canvas.width * 0.5 - canvas.left ) / ( canvas.width * 0.5 ) ),
-						( ( canvas.height + 2 * ( canvas.top - pageY ) ) / canvas.height )
-					);
-
-					return vector;
-
-				};
-
-			}() );
-
-			function onTouchStart( event ) {
-
-				if ( !isTouched ) {
-
-					isTouched = true;
-					pickControlToEnable( getPointerInNdc( event.changedTouches[ 0 ].pageX, event.changedTouches[ 0 ].pageY ) );
-
-				}
-
-			}
-
-			function onTouchEnd( event ) {
-
-				if( event.touches.length === 0 ) {
-					
-					spinControlSmall.enabled = false;
-					spinControlBig.enabled = false;
-					controls.enabled = false;
-					isTouched = false;
-
-				}
-
-			}
-
-			function onSpinMapping() {
-
-				var mappingMode = mapperSelector.options[mapperSelector.selectedIndex].value;
-				var newMode;
-				if( mappingMode === 'holroyd' ) {
-
-					newMode = spinControlBig.POINTER_SPHERE_MAPPING.HOLROYD;
-
-				} else if( mappingMode === 'shoemake' ) {
-
-					newMode = spinControlBig.POINTER_SPHERE_MAPPING.SHOEMAKE;
-
-				} else if( mappingMode === 'azimuthal' ) {
-
-					newMode = spinControlBig.POINTER_SPHERE_MAPPING.AZIMUTHAL;
-
-				} else if( mappingMode === 'raycast' ) {
-
-					newMode = spinControlBig.POINTER_SPHERE_MAPPING.RAYCAST;
-
-				}
-				
-				spinners.forEach((spinner) => 
-				{
-
-					spinner.setPointerToSphereMapping(newMode);
-
-				});
-				
-			}
-
-			function onRelativelySpinOffTrackball() {
-
-				spinners.forEach((spinner) => {
-
-					spinner.relativelySpinOffTrackball = relativelySpinCheckbox.checked;
-
-				});
-				
-			}
-
-			function toggleSettings() {
-				var settings = document.getElementById('settings');
-				if(document.getElementById('menuCheckbox').checked) {
-					settings.style.opacity = 1;
-				} else {
-					settings.style.opacity = 0;
-				}
-			}
-
-		</script>
-
-	</body>
 </html>
