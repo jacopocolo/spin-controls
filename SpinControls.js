@@ -8,8 +8,10 @@
 
 /*
 What do I need?
-I need the ability to spin things with 1 touch or 1 mouse if configured
-I need the ability to spin and resize with 2 touches or translate with 3 touches
+For the MINI HANDLER
+- I need the ability to spin things with 1 touch or 1 mouse if configured
+For the MAIN CANVAS
+- I need the ability to spin and resize with 2 touches or translate with 3 touches
 */
 
 const MOUSE = {
@@ -319,7 +321,9 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 	}();
 
 	const translate = function () {
+
 		return function translate(deltaX, deltaY) {
+			console.log("translate called")
 			translateLeft(deltaX);
 			if (_this.verticalDragToForward) {
 				translateDeep(deltaY)
@@ -514,7 +518,38 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 	}
 
 	this.onPointerDownScale = function () {
-		console.log("onPointerDownScale")
+		// console.log("onPointerDownScale")
+	}
+
+	this.handleTouchStartTranslate = function (event) {
+
+		if (event.touches.length == 1) {
+			translateStart.set(event.touches[0].pageX, event.touches[0].pageY);
+		} else {
+			const x = 0.5 * (event.touches[0].pageX + event.touches[1].pageX);
+			const y = 0.5 * (event.touches[0].pageY + event.touches[1].pageY);
+			translateStart.set(x, y);
+		}
+	}
+
+	this.handleTouchMoveTranslate = function (event) {
+
+		if (event.touches.length == 1) {
+
+			translateEnd.set(event.touches[0].pageX, event.touches[0].pageY);
+
+		} else {
+
+			const x = 0.5 * (event.touches[0].pageX + event.touches[1].pageX);
+			const y = 0.5 * (event.touches[0].pageY + event.touches[1].pageY);
+
+			translateEnd.set(x, y);
+
+		}
+		translateDelta.subVectors(translateEnd, translateStart).multiplyScalar(_this.translateSpeed / 2);
+		translate(translateDelta.x, translateDelta.y);
+		translateStart.copy(translateEnd);
+		_this.update();
 	}
 
 	// Finds point on sphere in world coordinate space
@@ -782,17 +817,16 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 			case 1:
 				switch (_this.touches.ONE) {
 					case ACTION.TRANSLATE:
-						console.log("length: " + event.touches.length, "translate")
+						if (_this.enableTranslate === false) return;
+						_this.handleTouchStartTranslate(event)
 						state = STATE.TOUCH_TRANSLATE;
 						break;
 					case ACTION.ROTATE:
 						_this.handleTouchStart(event);
 						_this.handlePointerDown(event);
-						console.log("length: " + event.touches.length, "rotate")
 						state = STATE.TOUCH_ROTATE;
 						break;
 					case ACTION.SCALE:
-						console.log("length: " + event.touches.length, "scale")
 						state = STATE.TOUCH_SCALE;
 					default:
 						state = STATE.NONE;
@@ -803,7 +837,6 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 					case ACTION.SCALE_ROTATE:
 						_this.handleTouchStart(event);
 						_this.handlePointerDown(event);
-						console.log("length: " + event.touches.length, "scale_rotate")
 						state = STATE.TOUCH_SCALE_ROTATE;
 						break;
 					default:
@@ -813,8 +846,10 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 			case 3:
 				switch (_this.touches.THREE) {
 					case ACTION.TRANSLATE:
-						console.log("length: " + event.touches.length, "translate")
-						state = STATE.TRANSLATE;
+						if (_this.enableTranslate === false) return;
+						_this.handleTouchStartTranslate(event)
+						console.log("onTouchStart translate")
+						state = STATE.TOUCH_TRANSLATE;
 						break;
 					default:
 						state = STATE.NONE;
@@ -831,23 +866,23 @@ var SpinControls = function (object, trackBallRadius, camera, domElement) {
 		event.preventDefault();
 		event.stopImmediatePropagation(); // Prevent other controls from working.
 
+		console.log(state)
+
 		switch (state) {
 			case STATE.TOUCH_ROTATE:
-				console.log("rotate", state)
 				_this.onPointerMoveRotate(event.touches[0].pageX, event.touches[0].pageY, event.timeStamp);
 				break;
 			case STATE.TOUCH_TRANSLATE:
-				console.log("translate", state)
+				console.log("handleTouchMoveTranslate")
+				_this.handleTouchMoveTranslate(event)
 				break;
 			case STATE.TOUCH_SCALE:
-				console.log("scale", state)
 				break;
 			case STATE.TOUCH_SCALE_ROTATE:
 				_this.onPointerMoveRotate(event.touches[0].pageX, event.touches[0].pageY, event.timeStamp);
-				console.log("scale_rotate", state)
 				break;
 			default:
-				state = STATE.NONE;
+			// state = STATE.NONE;
 		}
 
 	}
